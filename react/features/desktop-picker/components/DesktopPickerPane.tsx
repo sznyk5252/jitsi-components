@@ -1,0 +1,152 @@
+import React, { Component } from 'react';
+import { WithTranslation } from 'react-i18next';
+import { connect } from 'react-redux';
+
+import { IReduxState } from '../../app/types';
+import { isMacOS } from '../../base/environment/environment';
+import { translate } from '../../base/i18n/functions';
+import Checkbox from '../../base/ui/components/web/Checkbox';
+import Spinner from '../../base/ui/components/web/Spinner';
+import { isSystemAudioOfferedFor } from '../../screen-share/functions';
+
+import DesktopSourcePreview from './DesktopSourcePreview';
+
+/**
+ * The type of the React {@code Component} props of {@link DesktopPickerPane}.
+ */
+interface IProps extends WithTranslation {
+
+    /**
+     * Whether the checkbox to share system audio is shown.
+     */
+    _systemAudioOffered: boolean;
+
+    /**
+     * The handler to be invoked when a DesktopSourcePreview is clicked.
+     */
+    onClick: Function;
+
+    /**
+     * The handler to be invoked when a DesktopSourcePreview is double clicked.
+     */
+    onDoubleClick: Function;
+
+    /**
+     * The handler to be invoked if the users checks the audio screen sharing checkbox.
+     */
+    onShareAudioChecked: Function;
+
+    /**
+     * The id of the DesktopCapturerSource that is currently selected.
+     */
+    selectedSourceId: string;
+
+    /**
+     * An array of DesktopCapturerSources.
+     */
+    sources: Array<any>;
+
+    /**
+     * The source type of the DesktopCapturerSources to display.
+     */
+    type: string;
+}
+
+/**
+ * React component for showing a grid of DesktopSourcePreviews.
+ *
+ * @augments Component
+ */
+class DesktopPickerPane extends Component<IProps> {
+
+    /**
+     * Initializes a new DesktopPickerPane instance.
+     *
+     * @param {Object} props - The read-only properties with which the new
+     * instance is to be initialized.
+     */
+    constructor(props: IProps) {
+        super(props);
+
+        this._onShareAudioCheck = this._onShareAudioCheck.bind(this);
+    }
+
+    /**
+     * Function to be called when the Checkbox is used.
+     *
+     * @param {boolean} checked - Checkbox status (checked or not).
+     * @returns {void}
+     */
+    _onShareAudioCheck({ target: { checked } }: { target: { checked: boolean; }; }) {
+        this.props.onShareAudioChecked(checked);
+    }
+
+    /**
+     * Implements React's {@link Component#render()}.
+     *
+     * @inheritdoc
+     * @returns {ReactElement}
+     */
+    override render() {
+        const {
+            _systemAudioOffered,
+            onClick,
+            onDoubleClick,
+            selectedSourceId,
+            sources,
+            type,
+            t
+        } = this.props;
+
+        const classNames
+            = `desktop-picker-pane default-scrollbar source-type-${type}`;
+        const previews
+            = sources
+                ? sources.map(source => (
+                    <DesktopSourcePreview
+                        key = { source.id }
+                        onClick = { onClick }
+                        onDoubleClick = { onDoubleClick }
+                        selected = { source.id === selectedSourceId }
+                        source = { source }
+                        type = { type } />))
+                : (
+                    <div className = 'desktop-picker-pane-spinner'>
+                        <Spinner />
+                    </div>
+                );
+
+        let checkBox;
+
+        if (_systemAudioOffered) {
+            // On macOS the audio is the whole system's, whatever the source, so the label says so.
+            checkBox = (<Checkbox
+                label = { t(isMacOS() ? 'dialog.screenSharingSystemAudio' : 'dialog.screenSharingAudio') }
+                name = 'share-system-audio'
+                onChange = { this._onShareAudioCheck } />);
+        }
+
+        return (
+            <div className = { classNames }>
+                { previews }
+                { checkBox }
+            </div>
+        );
+    }
+}
+
+/**
+ * Maps part of the Redux state to the props of this component.
+ *
+ * @param {IReduxState} state - The Redux state.
+ * @param {Object} ownProps - The props passed to the component.
+ * @private
+ * @returns {Object}
+ */
+function _mapStateToProps(state: IReduxState, ownProps: { type: string; }) {
+    return {
+        _systemAudioOffered: isSystemAudioOfferedFor(state, ownProps.type)
+    };
+}
+
+export default translate(connect(_mapStateToProps)(DesktopPickerPane));

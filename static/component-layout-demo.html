@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jitsi component layout demo</title>
+    <script src="/libs/external_api.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background: #111;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        #meeting { flex: 1 1 auto; min-width: 0; }
+        #panel {
+            flex: 0 0 320px;
+            padding: 16px;
+            overflow: auto;
+            background: #1b1b1b;
+            border-left: 1px solid #333;
+        }
+        h1 { font-size: 16px; margin: 0 0 12px; }
+        p { font-size: 12px; line-height: 1.5; color: #aaa; }
+        button {
+            display: block;
+            width: 100%;
+            margin: 0 0 8px;
+            padding: 9px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: #2f6fed;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        button.secondary { background: #333; }
+        button:hover { filter: brightness(1.15); }
+        #log {
+            margin-top: 16px;
+            padding: 8px;
+            min-height: 120px;
+            max-height: 40vh;
+            overflow: auto;
+            background: #000;
+            border-radius: 6px;
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="meeting"></div>
+
+    <div id="panel">
+        <h1>Component layout</h1>
+        <p>
+            The window surfaces are opened by the meeting page and require a user
+            gesture. If a window does not appear, allow popups for this site and
+            try again.
+        </p>
+
+        <button id="split-both">Toolbar + filmstrip in one window</button>
+        <button id="split-toolbar">Toolbar in its own window</button>
+        <button id="filmstrip-window">Filmstrip in its own window</button>
+        <button class="secondary" id="inline">Everything back to the meeting</button>
+        <button class="secondary" id="close">Close the side window</button>
+
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const logElement = document.getElementById('log');
+        const log = message => {
+            logElement.textContent = `${new Date().toLocaleTimeString()} ${message}\n${logElement.textContent}`;
+        };
+
+        const roomName = `ComponentLayoutDemo${Math.floor(Math.random() * 100000)}`;
+        const api = new JitsiMeetExternalAPI(location.host, {
+            parentNode: document.getElementById('meeting'),
+            roomName,
+            configOverwrite: {
+                startWithAudioMuted: true,
+                startWithVideoMuted: false,
+                prejoinConfig: { enabled: false }
+            }
+        });
+
+        api.addEventListener('componentSurfaceOpened', data => log(`opened ${data.id}`));
+        api.addEventListener('componentSurfaceClosed', data => log(`closed ${data.id}`));
+        api.addEventListener('componentSurfaceError', data =>
+            log(`error ${data.id}: ${data.error}${data.component ? ` (${data.component})` : ''}`));
+
+        const openSide = options => api.executeCommand('openComponentSurface', {
+            id: 'side',
+            title: 'Jitsi side window',
+            width: 560,
+            height: 760,
+            ...options
+        });
+
+        document.getElementById('split-both').addEventListener('click', () => {
+            // `viewport` makes the side window drive the filmstrip thumbnail size.
+            openSide({ viewport: true });
+            api.executeCommand('setComponentTargets', {
+                toolbar: 'side',
+                filmstrip: 'side'
+            });
+        });
+
+        document.getElementById('split-toolbar').addEventListener('click', () => {
+            openSide({ height: 180, width: 900 });
+            api.executeCommand('setComponentTarget', { component: 'toolbar', target: 'side' });
+        });
+
+        document.getElementById('filmstrip-window').addEventListener('click', () => {
+            openSide({ viewport: true });
+            api.executeCommand('setComponentTarget', { component: 'filmstrip', target: 'side' });
+        });
+
+        document.getElementById('inline').addEventListener('click', () => {
+            api.executeCommand('resetComponentLayout');
+        });
+
+        document.getElementById('close').addEventListener('click', () => {
+            api.executeCommand('closeComponentSurface', 'side');
+        });
+    </script>
+</body>
+
+</html>

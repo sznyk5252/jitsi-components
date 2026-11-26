@@ -1,0 +1,519 @@
+import React, { Component } from 'react';
+import { connect } from 'react-redux';
+
+import {
+    createAudioOutputAttachFailedEvent,
+    createAudioPlayErrorEvent,
+    createAudioPlaySuccessEvent
+} from '../../../../analytics/AnalyticsEvents';
+import { sendAnalytics } from '../../../../analytics/functions';
+import { IReduxState, IStore } from '../../../../app/types';
+import { DEFAULT_ORIGINAL_VOLUME } from '../../../../audio-translation/constants';
+import { getDuckedVolumeForParticipant, shouldDuckOriginalAudio }
+    from '../../../../audio-translation/functions';
+import { hideNotification, showWarningNotification } from '../../../../notifications/actions';
+import {
+    AUDIO_OUTPUT_NOTIFICATION_ID,
+    AUDIO_PLAYBACK_BLOCKED_NOTIFICATION_ID,
+    NOTIFICATION_TIMEOUT_TYPE
+} from '../../../../notifications/constants';
+import { isAudioOutputManagerEnabled } from '../../../devices/functions.web';
+import { browser } from '../../../lib-jitsi-meet';
+import { ITrack } from '../../../tracks/types';
+import logger from '../../logger';
+
+// iOS (WebKit) ignores programmatic HTMLMediaElement.volume — it is under the user's hardware control, so
+// assigning it is a no-op. Ducking therefore can't lower the volume there; we fall back to muting the
+// original entirely while its translation plays. `element.muted` IS honoured on iOS.
+const IS_IOS_BROWSER = browser.isIosBrowser();
+
+// The events that give the page user activation (a touch pointerdown does not), which lifts the autoplay block. A
+// click into an iframe (shared video, Etherpad) activates the page too, but only shows up here as a blur.
+const ACTIVATION_EVENTS = [ 'blur', 'keydown', 'mousedown', 'touchend' ];
+
+// The elements the autoplay policy blocks; the one notification about them stays until none is left.
+const blockedTracks = new Set<AudioTrack>();
+
+/**
+ * The type of the React {@code Component} props of {@link AudioTrack}.
+ */
+interface IProps {
+
+    /**
+     * Whether this track's original audio is currently ducked because its translated counterpart is playing.
+     * On iOS, where element volume cannot be lowered, this causes the element to be muted instead.
+     */
+    _ducked?: boolean;
+
+    /**
+     * Represents muted property of the underlying audio element.
+     */
+    _muted?: boolean;
+
+    /**
+     * Represents volume property of the underlying audio element.
+     */
+    _volume?: number | boolean;
+
+    /**
+     * The audio track.
+     */
+    audioTrack?: ITrack;
+
+    /**
+     * Used to determine the value of the autoplay attribute of the underlying
+     * audio element.
+     */
+    autoPlay: boolean;
+
+    /**
+     * The redux dispatch function.
+     */
+    dispatch: IStore['dispatch'];
+
+    /**
+     * The value of the id attribute of the audio element.
+     */
+    id: string;
+
+    /**
+     * The ID of the participant associated with the audio element.
+     */
+    participantId: string;
+}
+
+/**
+ * The React/Web {@link Component} which is similar to and wraps around {@code HTMLAudioElement}.
+ */
+class AudioTrack extends Component<IProps> {
+    /**
+     * Reference to the HTML audio element, stored until the file is ready.
+     */
+    _ref: React.RefObject<HTMLAudioElement>;
+
+    /**
+     * The current timeout ID for attach or play retries. Shared so that
+     * {@link _detachTrack} can cancel whichever retry is pending.
+     */
+    _retryTimeout: number | undefined;
+
+    /**
+     * Tracks how many full re-attach cycles (attach retries + play retries exhausted) have occurred
+     * to prevent infinite recovery loops.
+     */
+    _reattachCount = 0;
+
+    /**
+     * Whether the component was unmounted, e.g. an attach that settles afterwards is for a participant who left.
+     */
+    _unmounted = false;
+
+    /**
+     * Default values for {@code AudioTrack} component's properties.
+     *
+     * @static
+     */
+    static defaultProps = {
+        autoPlay: true,
+        id: ''
+    };
+
+
+    /**
+     * Creates new <code>Audio</code> element instance with given props.
+     *
+     * @param {Object} props - The read-only properties with which the new
+     * instance is to be initialized.
+     */
+    constructor(props: IProps) {
+        super(props);
+
+        // Bind event handlers so they are only bound once for every instance.
+        this._errorHandler = this._errorHandler.bind(this);
+        this._onUserActivation = this._onUserActivation.bind(this);
+        this._ref = React.createRef();
+        this._play = this._play.bind(this);
+    }
+
+
+    /**
+     * Attaches the audio track to the audio element and plays it.
+     *
+     * @inheritdoc
+     * @returns {void}
+     */
+    override componentDidMount() {
+        this._attachTrack(this.props.audioTrack);
+
+        if (this._ref?.current) {
+            const audio = this._ref?.current;
+            const { _volume } = this.props;
+
+            if (typeof _volume === 'number') {
+                audio.volume = _volume;
+            }
+
+            audio.muted = this._isMuted(this.props);
+
+            // @ts-ignore
+            audio.addEventListener('error', this._errorHandler);
+        } else { // This should never happen
+            logger.error(`The react reference is null for AudioTrack ${this.props?.id}`);
+        }
+    }
+
+    /**
+     * Remove any existing associations between the current audio track and the
+     * component's audio element.
+     *
+     * @inheritdoc
+     * @returns {void}
+     */
+    override componentWillUnmount() {
+        this._unmounted = true;
+        this._detachTrack(this.props.audioTrack);
+        this._unblock();
+
+        // @ts-ignore
+        this._ref?.current?.removeEventListener('error', this._errorHandler);
+    }
+
+    /**
+     * This component's updating is blackboxed from React to prevent re-rendering of the audio
+     * element, as we set all the properties manually.
+     *
+     * @inheritdoc
+     * @returns {boolean} - False is always returned to blackbox this component
+     * from React.
+     */
+    override shouldComponentUpdate(nextProps: IProps) {
+        const currentJitsiTrack = this.props.audioTrack?.jitsiTrack;
+        const nextJitsiTrack = nextProps.audioTrack?.jitsiTrack;
+
+        if (currentJitsiTrack !== nextJitsiTrack) {
+            this._detachTrack(this.props.audioTrack);
+            this._attachTrack(nextProps.audioTrack);
+        }
+
+        if (this._ref?.current) {
+            const audio = this._ref?.current;
+            const currentVolume = audio.volume;
+            const nextVolume = nextProps._volume;
+
+            if (typeof nextVolume === 'number' && !isNaN(nextVolume) && currentVolume !== nextVolume) {
+                if (nextVolume === 0) {
+                    logger.debug(`Setting audio element ${nextProps?.id} volume to 0`);
+                }
+                audio.volume = nextVolume;
+            }
+
+            const currentMuted = audio.muted;
+            const nextMuted = this._isMuted(nextProps);
+
+            if (currentMuted !== nextMuted) {
+                logger.debug(`Setting audio element ${nextProps?.id} muted to ${nextMuted}`);
+
+                audio.muted = nextMuted;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Computes the effective muted state of the audio element: muted when the conference is joined silently
+     * ({@code _muted}), or — on iOS, where the volume cannot be lowered — while the track is ducked because
+     * its translation is playing.
+     *
+     * @param {IProps} props - The props to evaluate.
+     * @returns {boolean}
+     */
+    _isMuted(props: IProps) {
+        return Boolean(props._muted) || (IS_IOS_BROWSER && Boolean(props._ducked));
+    }
+
+    /**
+     * Implements React's {@link Component#render()}.
+     *
+     * @inheritdoc
+     * @returns {ReactElement}
+     */
+    override render() {
+        const { autoPlay, id } = this.props;
+
+        return (
+            <audio
+                autoPlay = { autoPlay }
+                id = { id }
+                ref = { this._ref } />
+        );
+    }
+
+    /**
+     * Calls into the passed in track to associate the track with the component's audio element.
+     *
+     * @param {Object} track - The redux representation of the {@code JitsiLocalTrack}.
+     * @param {number} retryCount - The number of previously failed attach retries.
+     * @private
+     * @returns {void}
+     */
+    _attachTrack(track?: ITrack, retryCount = 0) {
+        const { id } = this.props;
+
+        if (!track?.jitsiTrack) {
+            logger.warn(`Attach is called on audio element ${id} without tracks passed!`);
+
+            return;
+        }
+
+        if (!this._ref?.current) {
+            logger.warn(`Attempting to attach track ${track?.jitsiTrack} on AudioTrack ${id} without reference!`);
+
+            return;
+        }
+
+        track.jitsiTrack.attach(this._ref.current)
+            .then(() => {
+                if (retryCount !== 0) {
+                    logger.info(`Successfully attached audio track on element ${id} after ${retryCount} retries`);
+                }
+                this._play();
+            })
+            .catch((error: Error) => {
+                logger.error(
+                    `Attaching the remote track ${track.jitsiTrack} to audio with id ${id} has failed with `,
+                    error);
+
+                if (retryCount < 3) {
+                    this._retryTimeout = window.setTimeout(() => {
+                        this._attachTrack(track, retryCount + 1);
+                    }, 1000);
+                } else {
+                    logger.error(`Failed to attach audio track on element ${id} after ${retryCount} retries`);
+
+                    if (this._unmounted) {
+                        return;
+                    }
+
+                    // The attach only fails when the element could not be switched to the selected speaker.
+                    const manager = isAudioOutputManagerEnabled();
+
+                    sendAnalytics(createAudioOutputAttachFailedEvent({
+                        error: error?.name,
+                        manager
+                    }));
+                    manager && this.props.dispatch(showWarningNotification({
+                        descriptionKey: 'notify.audioOutputAttachFailedDescription',
+                        titleKey: 'notify.audioOutputAttachFailedTitle',
+                        uid: AUDIO_OUTPUT_NOTIFICATION_ID
+                    }, NOTIFICATION_TIMEOUT_TYPE.MEDIUM));
+                }
+            });
+    }
+
+    /**
+     * Removes the association to the component's audio element from the passed
+     * in redux representation of jitsi audio track.
+     *
+     * @param {Object} track -  The redux representation of the {@code JitsiLocalTrack}.
+     * @private
+     * @returns {void}
+     */
+    _detachTrack(track?: ITrack) {
+        if (this._ref?.current && track?.jitsiTrack) {
+            clearTimeout(this._retryTimeout);
+            this._retryTimeout = undefined;
+            track.jitsiTrack.detach(this._ref.current);
+        }
+    }
+
+    /**
+     * Reattaches the audio track to the underlying HTMLAudioElement when an 'error' event is fired.
+     *
+     * @param {Error} error - The error event fired on the HTMLAudioElement.
+     * @returns {void}
+     */
+    _errorHandler(error: Error) {
+        logger.error(`Error ${error?.message} called on audio track ${this.props.audioTrack?.jitsiTrack}. `
+            + 'Attempting to reattach the audio track to the element and execute play on it');
+        this._detachTrack(this.props.audioTrack);
+        this._attachTrack(this.props.audioTrack);
+    }
+
+    /**
+     * Adds or removes the listeners that retry playback once the user interacts with the page.
+     *
+     * @param {boolean} listen - Whether to add the listeners.
+     * @returns {void}
+     */
+    _listenForUserActivation(listen: boolean) {
+        for (const type of ACTIVATION_EVENTS) {
+            listen
+                ? window.addEventListener(type, this._onUserActivation, true)
+                : window.removeEventListener(type, this._onUserActivation, true);
+        }
+    }
+
+    /**
+     * Retries playback blocked by the autoplay policy, now that the page has user activation.
+     *
+     * @param {Event} event - The event that may have activated the page.
+     * @returns {void}
+     */
+    _onUserActivation(event: Event) {
+        // A blur that doesn't move focus into an iframe, or Escape and other keys that don't activate the page, would
+        // only be blocked again.
+        const activated = event.type === 'blur'
+            ? document.activeElement instanceof HTMLIFrameElement
+            : navigator.userActivation?.isActive !== false;
+
+        if (!activated) {
+            return;
+        }
+
+        this._listenForUserActivation(false);
+        this._play();
+    }
+
+    /**
+     * Records that the autoplay policy blocks this element and tells the user how to lift it.
+     *
+     * @param {Error} error - The error play() was rejected with.
+     * @returns {void}
+     */
+    _block(error: Error) {
+        // A retry that is blocked again lands here too.
+        if (!blockedTracks.has(this)) {
+            logger.warn(`Autoplay blocks audio element ${this.props.id} until the user interacts with the page`, error);
+            sendAnalytics(createAudioPlayErrorEvent(this.props.id));
+            blockedTracks.size || this.props.dispatch(showWarningNotification({
+                descriptionKey: 'notify.audioPlaybackBlockedDescription',
+                titleKey: 'notify.audioPlaybackBlockedTitle',
+                uid: AUDIO_PLAYBACK_BLOCKED_NOTIFICATION_ID
+            }, NOTIFICATION_TIMEOUT_TYPE.STICKY));
+            blockedTracks.add(this);
+        }
+        this._listenForUserActivation(true);
+    }
+
+    /**
+     * Clears the autoplay block of this element, hiding the notification once no element is blocked.
+     *
+     * @returns {void}
+     */
+    _unblock() {
+        this._listenForUserActivation(false);
+
+        if (blockedTracks.delete(this) && !blockedTracks.size) {
+            this.props.dispatch(hideNotification(AUDIO_PLAYBACK_BLOCKED_NOTIFICATION_ID));
+        }
+    }
+
+    /**
+     * Plays the underlying HTMLAudioElement.
+     *
+     * @param {number} retries - The number of previously failed retries.
+     * @returns {void}
+     */
+    _play(retries = 0) {
+        const { autoPlay, id } = this.props;
+
+        if (!this._ref?.current) {
+            // nothing to play.
+            logger.warn(`Attempting to call play on AudioTrack ${id} without reference!`);
+
+            return;
+        }
+
+        if (autoPlay) {
+            // Ensure the audio gets play() called on it. This may be necessary in the
+            // case where the local video container was moved and re-attached, in which
+            // case the audio may not autoplay.
+            this._ref.current.play()
+            .then(() => {
+                if (this._unmounted) {
+                    return;
+                }
+
+                if (retries !== 0 || blockedTracks.has(this)) {
+                    // success after some failures
+                    this._retryTimeout = undefined;
+                    sendAnalytics(createAudioPlaySuccessEvent(id));
+                    logger.info(`Successfully played audio track! retries: ${retries}`);
+                }
+                this._reattachCount = 0;
+                this._unblock();
+            }, e => {
+                if (this._unmounted) {
+                    return;
+                }
+
+                // Retrying cannot succeed until the user interacts with the page.
+                if (e?.name === 'NotAllowedError') {
+                    this._block(e);
+
+                    return;
+                }
+
+                // The autoplay policy no longer blocks it, so the notice asking for a click would not help.
+                this._unblock();
+                logger.error(`Failed to play audio track on audio element ${id}! retry: ${retries} ; Error:`, e);
+
+                if (retries < 3) {
+                    this._retryTimeout = window.setTimeout(() => this._play(retries + 1), 1000);
+
+                    if (retries === 0) {
+                        // send only 1 error event.
+                        sendAnalytics(createAudioPlayErrorEvent(id));
+                    }
+                } else {
+                    this._retryTimeout = undefined;
+
+                    // Play retries exhausted — re-attach the track and try again (once).
+                    if (this._reattachCount < 1) {
+                        this._reattachCount++;
+                        logger.warn(`Play retries exhausted for audio element ${id}, re-attaching track`);
+                        this._detachTrack(this.props.audioTrack);
+                        this._attachTrack(this.props.audioTrack);
+                    } else {
+                        logger.error(`Audio recovery failed for element ${id} after re-attach`);
+                    }
+                }
+            });
+        }
+    }
+}
+
+/**
+ * Maps (parts of) the Redux state to the associated {@code AudioTrack}'s props.
+ *
+ * @param {Object} state - The Redux state.
+ * @param {Object} ownProps - The props passed to the component.
+ * @private
+ * @returns {IProps}
+ */
+function _mapStateToProps(state: IReduxState, ownProps: any) {
+    const { participantsVolume } = state['features/filmstrip'];
+
+    let _volume: number | boolean | undefined = participantsVolume[ownProps.participantId];
+
+    // Driven by actual translated-audio presence, not isAudioTranslationAvailable: ducking follows the
+    // media, and must not un-duck mid-playback on a permission/flag change.
+    const sourceName: string | undefined = ownProps.audioTrack?.jitsiTrack?.getSourceName?.();
+    const ducked = shouldDuckOriginalAudio(state, sourceName, ownProps.participantId);
+
+    if (ducked) {
+        _volume = getDuckedVolumeForParticipant(state, ownProps.participantId);
+    } else if (_volume === undefined) {
+        // Full volume also undoes ducking, and a previous owner's volume when the bridge remaps the track.
+        _volume = DEFAULT_ORIGINAL_VOLUME;
+    }
+
+    return {
+        _ducked: ducked,
+        _muted: state['features/base/config'].startSilent,
+        _volume
+    };
+}
+
+export default connect(_mapStateToProps)(AudioTrack);

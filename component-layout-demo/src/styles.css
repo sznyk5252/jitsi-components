@@ -1,0 +1,825 @@
+:root {
+    color-scheme: dark;
+    --bg: #0b0d12;
+    --panel: #141821;
+    --panel-2: #1b202b;
+    --line: #262c38;
+    --text: #e7ebf3;
+    --muted: #8b93a5;
+    --accent: #3d7dff;
+    --accent-soft: #3d7dff33;
+    --ok: #37c98b;
+    --err: #ff6b6b;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 20% -10%, #1a2233 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px;
+    gap: 12px;
+}
+
+/* Top bar ------------------------------------------------------------------ */
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+    background: rgba(11, 13, 18, 0.85);
+    backdrop-filter: blur(8px);
+}
+
+.topbar h1 {
+    font-size: 18px;
+    margin: 0 0 2px;
+    letter-spacing: -0.01em;
+}
+
+.topbar p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.topbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topbar__cta {
+    padding: 9px 14px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.topbar__cta:hover {
+    filter: brightness(1.1);
+}
+
+.mode-switch {
+    display: flex;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+}
+
+.mode-switch button {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 7px 14px;
+}
+
+.mode-switch button.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Connection bar ----------------------------------------------------------- */
+
+.connect-bar {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+}
+
+.connect-bar label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.connect-bar input {
+    width: 220px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+}
+
+button {
+    font-family: inherit;
+}
+
+.connect-bar button {
+    padding: 9px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.connect-bar button.primary {
+    border-color: transparent;
+    background: var(--accent);
+    color: #fff;
+}
+
+.connect-bar button:disabled,
+.ghost:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.status {
+    margin-left: auto;
+    align-self: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.status--connected {
+    background: #123327;
+    color: var(--ok);
+}
+
+.status--connecting {
+    background: #2b2410;
+    color: #f2c94c;
+}
+
+.connect-bar--connected {
+    align-items: center;
+}
+
+.connect-bar__meeting {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.connect-bar__meeting strong {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* Connection dialog -------------------------------------------------------- */
+
+.connect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(4, 6, 10, 0.78);
+    backdrop-filter: blur(6px);
+}
+
+.connect-modal__card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(440px, 100%);
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--panel);
+    box-shadow: 0 30px 90px -25px #000;
+}
+
+.connect-modal__card h2 {
+    margin: 0;
+    font-size: 19px;
+}
+
+.connect-modal__card > p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.connect-modal__card label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.connect-modal__card input {
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+}
+
+.connect-modal__card input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.connect-modal__card .primary {
+    margin-top: 4px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.connect-modal__card .primary:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.connect-modal__card .ghost {
+    width: 100%;
+    text-align: center;
+}
+
+.connect-modal__error {
+    padding: 10px 12px;
+    border: 1px solid #6b2626;
+    border-radius: 9px;
+    background: #2a1212;
+    color: #ff9a9a;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.connect-modal__hint {
+    font-size: 11px !important;
+}
+
+.connect-modal__hint code {
+    color: var(--text);
+}
+
+/* Workspace ---------------------------------------------------------------- */
+
+.workspace {
+    display: grid;
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) var(--filmstrip-width, 132px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 12px;
+}
+
+.area--main {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.area--filmstrip {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.area--toolbar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+
+/* Area --------------------------------------------------------------------- */
+
+.area {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+}
+
+.area--collapsed {
+    align-self: start;
+    flex: 0 0 auto;
+}
+
+.area__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #181d27, #141821);
+}
+
+.area--collapsed .area__head {
+    border-bottom: 0;
+}
+
+.area__head h2 {
+    margin: 0 0 2px;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+}
+
+.area__head p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.toggle {
+    flex: 0 0 auto;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.toggle--on {
+    border-color: var(--accent-soft);
+    background: var(--accent-soft);
+    color: #9dbcff;
+}
+
+.area__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 12px;
+    overflow: hidden;
+}
+
+.area--main .area__body {
+    padding: 0;
+}
+
+.area--live .area__body {
+    padding: 0;
+}
+
+.area--toolbar.area--live .area__body {
+    flex: 0 0 var(--toolbar-height, 92px);
+    height: var(--toolbar-height, 92px);
+}
+
+/**
+ * The two panels mirror the natural size of the Jitsi modules: the vertical
+ * filmstrip is a narrow fixed-width strip, and the toolbar is a single row.
+ * Their headers are squeezed to leave as much room as possible for the module.
+ */
+.area--filmstrip.area--live .area__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 6px;
+}
+
+.area--filmstrip.area--live .area__head h2 {
+    margin: 0;
+    font-size: 10px;
+}
+
+.area--filmstrip.area--live .area__head p {
+    display: none;
+}
+
+.area--filmstrip.area--live .toggle {
+    padding: 4px 6px;
+    font-size: 9px;
+}
+
+.area--filmstrip.area--live .area__foot {
+    padding: 4px;
+}
+
+.area--filmstrip.area--live .ghost {
+    width: 100%;
+    padding: 6px 4px;
+    font-size: 10px;
+}
+
+.area--filmstrip.area--live .panel__empty {
+    padding: 6px;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.area--filmstrip.area--live .panel__empty small {
+    font-size: 9px;
+}
+
+.area--toolbar.area--live .area__head {
+    padding: 8px 12px;
+}
+
+.area--toolbar.area--live .area__head p {
+    display: none;
+}
+
+.area--toolbar.area--live .area__foot {
+    padding: 6px 12px 8px;
+}
+
+.area__foot {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 14px 14px;
+}
+
+.ghost {
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.ghost--small {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* Mock main ---------------------------------------------------------------- */
+
+.mock-main {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 240px;
+    background:
+        radial-gradient(600px 300px at 50% 20%, #2d3b5c 0%, transparent 70%),
+        linear-gradient(160deg, #1a2233, #0c1018);
+}
+
+.mock-main__avatar {
+    display: grid;
+    width: 110px;
+    height: 110px;
+    place-items: center;
+    border-radius: 50%;
+    background: linear-gradient(140deg, #6f9bff, #3554a8);
+    box-shadow: 0 18px 60px -10px #3d7dff80;
+    color: #fff;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.mock-main__name {
+    margin-top: 18px;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.mock-main__hint {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.mock-main__self {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    display: grid;
+    width: 96px;
+    height: 64px;
+    place-items: center;
+    border: 1px solid #ffffff26;
+    border-radius: 10px;
+    background: #101623;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* Mock filmstrip ----------------------------------------------------------- */
+
+.mock-filmstrip {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 100%;
+    overflow: auto;
+}
+
+.thumb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--panel-2);
+}
+
+.thumb--speaking {
+    border-color: var(--ok);
+    box-shadow: 0 0 0 1px #37c98b33;
+}
+
+.thumb span {
+    display: grid;
+    flex: 0 0 auto;
+    width: 42px;
+    height: 32px;
+    place-items: center;
+    border-radius: 7px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.thumb small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* Mock toolbar ------------------------------------------------------------- */
+
+.mock-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mock-toolbar button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.mock-toolbar .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+
+.mock-toolbar .is-on .dot {
+    background: var(--ok);
+}
+
+.mock-toolbar .is-off .dot {
+    background: var(--err);
+}
+
+/* Inline surface panels ---------------------------------------------------- */
+
+.panel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: #000;
+}
+
+.panel__empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px;
+    background: repeating-linear-gradient(45deg, #0e1118, #0e1118 10px, #0b0e14 10px, #0b0e14 20px);
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.panel__empty strong {
+    color: var(--text);
+    font-size: 12px;
+}
+
+.panel__empty small {
+    font-size: 11px;
+}
+
+.notice {
+    padding: 10px 14px;
+    border: 1px solid #5a4a1f;
+    border-radius: 12px;
+    background: #2b2410;
+    color: #f2d78c;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.notice a {
+    color: #fff;
+}
+
+/* Live mode ---------------------------------------------------------------- */
+
+.jitsi-mount {
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+    background: #000;
+}
+
+.jitsi-mount > iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.live-state {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.live-state__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 12px #37c98b;
+}
+
+/* Console ------------------------------------------------------------------ */
+
+.console {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    overflow: hidden;
+}
+
+.console--collapsed {
+    flex: 0 0 auto;
+}
+
+.console--open {
+    flex: 0 0 150px;
+}
+
+.console__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid transparent;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.console--open .console__head {
+    border-bottom-color: var(--line);
+}
+
+.console__latest {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+.console__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.console__body {
+    flex: 1 1 auto;
+    padding: 6px 12px;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+}
+
+.log-line {
+    display: flex;
+    gap: 10px;
+    margin: 4px 0;
+    color: var(--muted);
+}
+
+.log-line span {
+    flex: 0 0 auto;
+    color: #5b6375;
+}
+
+.log-line--ok {
+    color: var(--ok);
+}
+
+.log-line--error {
+    color: var(--err);
+}
+
+.muted {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+@media (max-width: 980px) {
+    .workspace {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto auto;
+        overflow: auto;
+    }
+
+    .area--main,
+    .area--filmstrip,
+    .area--toolbar {
+        grid-column: 1;
+    }
+
+    .area--main {
+        grid-row: 1;
+    }
+
+    .area--filmstrip {
+        grid-row: 2;
+        min-height: 320px;
+    }
+
+    .area--toolbar {
+        grid-row: 3;
+    }
+}

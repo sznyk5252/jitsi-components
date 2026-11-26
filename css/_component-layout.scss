@@ -1,0 +1,46 @@
+/**
+ * Styles of the component layout feature.
+ *
+ * A slot is transparent by default: its children keep using the positioning
+ * their own stylesheets give them, exactly as if they were not wrapped.
+ */
+.component-surface__slot {
+    display: contents;
+}
+
+/**
+ * A slot rendered into an element of the meeting document. It becomes the
+ * positioning context, so absolutely positioned components (the toolbar) sit in
+ * the container the embedder chose.
+ */
+.component-surface__slot--selector {
+    height: 100%;
+    position: relative;
+    width: 100%;
+}
+
+/**
+ * A hidden slot keeps its children mounted; display none only stops painting
+ * them. Used for components whose DOM the legacy layout code looks up by id.
+ */
+.component-surface__slot--hidden {
+    display: none !important;
+}
+
+/**
+ * A surface that hosts the toolbar is a dedicated control panel, not the
+ * meeting stage, so its toolbar must not auto-hide the way it does in the
+ * meeting. Hiding it explicitly with setComponentVisible still wins, because
+ * the whole slot is display:none then.
+ */
+.component-surface--toolbox .new-toolbox {
+    bottom: 0 !important;
+}
+
+/**
+ * The root of a component surface window. It carries the meeting page id and
+ * the current layout class, so the components' global styles apply unchanged.
+ */
+.component-surface {
+    background-color: #000;
+}
